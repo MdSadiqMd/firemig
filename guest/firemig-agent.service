@@ -1,0 +1,15 @@
+[Unit]
+Description=Firemig guest control agent
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/firemig/agent.py
+Restart=always
+RestartSec=100ms
+User=root
+Group=root
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
