@@ -1,0 +1,6 @@
+project_id  = "my-gcp-project"
+bucket_name = "my-gcp-project-runable-tfstate"
+location    = "US"
+
+# Optional customer-managed encryption key.
+# kms_key_name = "projects/my-gcp-project/locations/us/keyRings/terraform/cryptoKeys/state"
