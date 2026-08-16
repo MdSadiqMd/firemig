@@ -1,0 +1,31 @@
+{
+  "name": "@firemig/demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "firemig-demo": "./dist/cli.js" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@firemig/common": "workspace:*",
+    "@firemig/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": { "node": ">=22" },
+  "packageManager": "pnpm@10.24.0"
+}
