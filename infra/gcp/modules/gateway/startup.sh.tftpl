@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euxo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ca-certificates curl jq
+
+getent group ${app_group} >/dev/null || groupadd --system ${app_group}
+id -u ${app_user} >/dev/null 2>&1 || useradd --create-home --shell /bin/bash --gid ${app_group} ${app_user}
+%{ for directory in app_directories ~}
+mkdir -p ${directory}
+chown -R ${app_user}:${app_group} ${directory}
+%{ endfor ~}
