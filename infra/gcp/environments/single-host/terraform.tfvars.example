@@ -1,0 +1,20 @@
+project_id = "my-gcp-project"
+name_prefix = "runable-dev"
+region      = "us-central1"
+zone        = "us-central1-a"
+subnet_cidr = "10.30.0.0/24"
+
+# Keep this list narrow. An empty list leaves the API/proxy closed publicly.
+allowed_client_cidrs = ["203.0.113.10/32"]
+public_service_ports = [443]
+
+machine_type      = "n2-standard-8"
+min_cpu_platform  = "Intel Cascade Lake"
+data_disk_size_gb = 250
+logical_worker_ids = [
+  "worker-a",
+  "worker-b",
+]
+
+# Prefer a dedicated service account with only the roles the deployed services need.
+service_account_email = "runable-runtime@my-gcp-project.iam.gserviceaccount.com"
