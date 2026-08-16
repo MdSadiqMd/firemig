@@ -1,0 +1,39 @@
+# Decisions
+
+## 2026-08-14
+
+| Decision | Outcome |
+| --- | --- |
+| Control plane | Phoenix API with Ecto SQLite WAL, durable phase transitions, idempotency and reconciliation. |
+| Session gateway | Separate Elixir release using Thousand Island; external sockets survive worker cutover. |
+| Worker | TypeScript on Node 22, direct Firecracker Unix API, argument-array process execution and verified ranged transfers. |
+| Guest control | Dependency-free Python AF_VSOCK agent to avoid placing Node in the guest image. |
+| Single-host paths | Worker-specific physical directories are bind-mounted into private mount namespaces at identical snapshot-encoded paths. |
+| Networking | Worker-specific namespace/veth names, fixed TAP and guest IP, and lifecycle-managed host TCP relays. |
+| Migration path | Reliable serial full snapshots first; rollback only before destination resume intent is committed. |
+| Cloud baseline | One nested-KVM GCE host with two logical workers; optional two-region Terraform remains compatibility-gated. |
+| Firecracker assets | Firecracker `v1.16.1`; guest kernel/rootfs pinned to the available `v1.15` CI asset keys and hashed into `assets/MANIFEST.json`. |
+| Current deployment | Single-host GCP deployment is live in `us-east1-b` on `n2-standard-4`; `us-central1` N2 capacity was unavailable. Public API is `http://35.185.18.216:4000`. |
+| Live verification | SDK migration A to B passed with one unchanged external socket: boot ID/PID continuous, counter monotonic, zero client reconnects, 1,610,636,578 bytes transferred. |
+| Exactly-once stream | Sequence-aware demo routes retain computed output in guest memory until gateway ACK. A live `1..50` migration delivered all 50 values in exact order with zero missing, duplicate, or out-of-order values; computation was not replayed. |
+| Deployment concurrency | After base OS packages, Node setup, Firecracker assets, the Elixir build image and TypeScript installation run concurrently; coordinator and proxy releases build concurrently. Services start only after every job succeeds. |
+| Destination gate | Migration cannot pass `RESERVING`/`PRESTAGING` until the destination agent reports dependencies ready and a destination Firecracker API process is listening. Source pause occurs afterwards. |
+| Local transfer optimization | Co-located workers use atomic hard links for immutable snapshot artifacts; separate hosts retain resumable SHA-256 HTTP transfer. With a 256 MiB demo VM, live migration fell from `24.831s` to `2.222s`. |
+| Migration profile | `make infra-profile` records system-wide perf stacks and writes `flamegraphs/firemig-migration.svg`. The optimized profile was `97.84%` idle; Firecracker snapshot creation (`1.460s`) is now the dominant phase. |
+| Deployment scope | The live endpoint uses one GCE host in `us-east1-b`; `worker-a` and `worker-b` are logical workers, not cloud regions. The two-region Terraform root exists but is not deployed, and the `2.222s` hard-link result must not be presented as cross-region performance. |
+| Command broker runtime | Deployment and local startup reconcile pinned Redpanda `v25.2.7` before application services, expose Kafka/HTTP Proxy/admin only on host loopback, persist remote data at `/var/lib/runable/firemig/redpanda`, and maintain the one-partition `firemig.commands` topic through `rpk`. |
+| WebSocket command continuity | SDK commands use one authenticated Phoenix WebSocket per user. Commands submitted while `active_migration_id` is set are published to Redpanda partition 0 with `userId` as the key, projected durably in SQLite, filtered by command/user/sandbox, replayed in offset order after `DONE`, and broadcast only to that user's topic. |
+| Live queued-command verification | Migration completed in `2.182s`; the original command WebSocket remained open, Redpanda persisted `demo-redpanda-command` at partition 0 offset 0 keyed `demo-user`, SQLite reached `done`, and the worker-B file side effect was verified. Counter delivery remained exact `1..50` with zero reconnects, gaps in sequence, duplicates, or out-of-order values. |
+| macOS local runtime | `make local-up` uses the nested-KVM Lima Docker engine by default because Docker Desktop does not expose `/dev/kvm`. The same Compose stack remains usable with another KVM-capable Docker context. |
+| macOS nested KVM | Apple M3-or-later hosts can use a Lima VZ VM with nested virtualization and rootful Docker. The host Docker context points to Lima's forwarded socket; `make demo` runs in the runtime container so its raw TCP continuity check does not include Lima's host port forward. |
+| Demo server readiness | The demo verifies guest port `8080` is accepting connections before exposing the one-shot continuity socket, preventing an early worker-relay refusal from closing the collector before migration begins. |
+| Local-up lifecycle | On macOS, `make local-up` creates or starts the nested-KVM Lima VM, selects its rootful Docker context, starts the Compose stack, and follows the runtime container logs. `FIREMIG_FOLLOW_LOGS=0` provides a detached automation mode. |
+| Repeatable local demo | A busy preferred proxy port falls back to an ephemeral listener, and demo queued-command IDs include the sandbox ID. Repeated demos therefore avoid stale route and global command-ID collisions. |
+| Script organization | Operational scripts are grouped under `scripts/setup`, `scripts/local`, `scripts/runtime` and `scripts/gcp`; nested scripts resolve the repository root from two directory levels up, and `make test` syntax-checks shell scripts recursively. |
+| Synchronization discipline | Firecracker socket readiness uses filesystem notifications and child-exit observation; guest retries share an absolute deadline; queued command completion uses correlated Phoenix events; parallel artifact failures abort and settle sibling work; shell health probes have wall-clock limits. Timers remain only for enforcement, protocol heartbeat/backoff, and intentional demo cadence. |
+| Source organization | Hand-written TypeScript and Elixir source, tests and operational scripts are grouped by responsibility with at most six immediate files per directory. Pnpm and Terraform discovery roots remain flat where moving files would change tool behavior or Terraform resource addresses. |
+| Repeatable deployment | GCP deployment uses a unique remote archive, stops the previous runtime before replacing `/opt/runable`, removes stale worker processes, and rebuilds the local SDK/demo before verification. This prevents stale archive ownership, worker-token mismatches and stale verifier output. |
+| Post-refactor verification | `make test`, the detached Lima/Compose local stack, and `make infra-deploy` all passed. The production demo at `35.185.18.216` delivered exact sequence `1..50` with unchanged boot ID/PID, zero reconnects, queued-command replay, and a `2.541s` migration; all worker, proxy, coordinator and Redpanda health checks passed with zero Terraform drift. |
+| Architecture diagram | Added `docs/diagrams.md` Diagram 0 showing all packages, services and module organization with module responsibilities table. Existing protocol/overview/in-depth diagrams renumbered to 1-3. |
+| Deployment verification 2026-08-14 | Local Docker stack (`make local-up` + `make demo`) passed: 50 events, 1.356s migration, zero reconnects, queued-command replayed. GCP prod (`make infra-deploy`) passed: 50 events, 2.571s migration, zero reconnects, queued-command replayed. |
+| README rewrite 2026-08-16 | Rewrote `README.md` in the style of the Human-Archive README (problem framing, mermaid architecture, measured-numbers table, workflow/setup/deployment sections). All technical claims preserved: Firecracker-only migration, full-snapshot baseline, gateway owns external socket, hard-link vs transfer numbers, one-host logical-worker caveats, `35.185.18.216` demo endpoint, and the two-region root as the cross-region path. |
