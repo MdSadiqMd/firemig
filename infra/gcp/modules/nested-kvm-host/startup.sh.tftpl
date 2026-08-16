@@ -1,0 +1,58 @@
+#!/bin/bash
+set -euxo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ca-certificates cpu-checker curl jq util-linux
+
+getent group ${app_group} >/dev/null || groupadd --system ${app_group}
+id -u ${app_user} >/dev/null 2>&1 || useradd --create-home --shell /bin/bash --gid ${app_group} ${app_user}
+getent group kvm >/dev/null || groupadd --system kvm
+usermod -aG kvm ${app_user}
+
+cat >/etc/udev/rules.d/99-runable-kvm.rules <<'RULE'
+KERNEL=="kvm", GROUP="kvm", MODE="0660"
+RULE
+udevadm control --reload-rules
+modprobe kvm
+modprobe kvm_intel || true
+udevadm trigger --name-match=kvm || true
+test -c /dev/kvm
+chgrp kvm /dev/kvm
+chmod 0660 /dev/kvm
+
+device_path="/dev/disk/by-id/google-${data_disk_device_name}"
+for attempt in $(seq 1 60); do
+  test -b "$device_path" && break
+  sleep 1
+done
+test -b "$device_path"
+
+if ! blkid "$device_path" >/dev/null 2>&1; then
+  mkfs.ext4 -F -L runable-data "$device_path"
+fi
+
+mkdir -p ${data_mount_point}
+disk_uuid=$(blkid -s UUID -o value "$device_path")
+if ! grep -q "UUID=$disk_uuid" /etc/fstab; then
+  printf 'UUID=%s %s ext4 defaults,nofail,discard 0 2\n' "$disk_uuid" "${data_mount_point}" >>/etc/fstab
+fi
+mountpoint -q ${data_mount_point} || mount ${data_mount_point}
+
+%{ for directory in app_directories ~}
+mkdir -p ${directory}
+%{ endfor ~}
+chown -R ${app_user}:${app_group} ${data_mount_point}
+%{ for directory in app_directories ~}
+chown -R ${app_user}:${app_group} ${directory}
+%{ endfor ~}
+
+mkdir -p /var/lib/runable
+jq -n \
+  --arg kernel "$(uname -r)" \
+  --arg architecture "$(uname -m)" \
+  --arg cpu_vendor "$(lscpu | awk -F: '/Vendor ID/ {gsub(/^[[:space:]]+/, "", $2); print $2}')" \
+  --argjson kvm_available "$(test -c /dev/kvm && printf true || printf false)" \
+  '{kernel: $kernel, architecture: $architecture, cpu_vendor: $cpu_vendor, kvm_available: $kvm_available}' \
+  >/var/lib/runable/host-capabilities.json
+chown ${app_user}:${app_group} /var/lib/runable/host-capabilities.json
