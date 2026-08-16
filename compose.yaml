@@ -1,0 +1,79 @@
+name: firemig
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.2.7
+    command:
+      - redpanda
+      - start
+      - --node-id=0
+      - --smp=1
+      - --memory=384M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:9092
+      - --pandaproxy-addr=0.0.0.0:8082
+      - --advertise-pandaproxy-addr=redpanda:8082
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info -X brokers=127.0.0.1:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.2.7
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        rpk topic create firemig.commands --partitions 1 --replicas 1
+        -X brokers=redpanda:9092 2>/dev/null ||
+        test "$$(rpk topic list -X brokers=redpanda:9092 | awk '$$1 == "firemig.commands" {print $$2}')" = "1"
+    restart: "no"
+
+  runtime:
+    build:
+      context: .
+    privileged: true
+    init: true
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+    env_file:
+      - .run/runtime.env
+    environment:
+      FIREMIG_PUBLIC_HOST: ${FIREMIG_PUBLIC_HOST:-127.0.0.1}
+      REDPANDA_HTTP_URL: http://redpanda:8082
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://127.0.0.1:4101/healthz >/dev/null &&
+          curl -fsS http://127.0.0.1:4102/healthz >/dev/null &&
+          curl -fsS http://127.0.0.1:4200/health >/dev/null &&
+          curl -fsS http://127.0.0.1:4000/healthz >/dev/null
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 15s
+    ports:
+      - "4000:4000"
+      - "8080:8080"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    volumes:
+      - runtime-data:/var/lib/firemig
+
+volumes:
+  redpanda-data:
+  runtime-data:
