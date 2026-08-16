@@ -1,0 +1,29 @@
+project_id  = "my-gcp-project"
+name_prefix = "runable-prod"
+
+region_a      = "us-central1"
+gateway_zone  = "us-central1-a"
+worker_a_zone = "us-central1-b"
+subnet_a_cidr = "10.40.0.0/24"
+
+region_b      = "us-east1"
+worker_b_zone = "us-east1-b"
+subnet_b_cidr = "10.41.0.0/24"
+
+# Keep this list narrow. An empty list leaves the API/proxy closed publicly.
+allowed_client_cidrs = ["203.0.113.10/32"]
+public_service_ports = [443]
+
+# Set these to the ports actually configured in the deployed service manifests.
+agent_service_ports = [9090]
+worker_admin_ports  = [9091]
+worker_peer_ports   = [9092]
+
+gateway_machine_type     = "n2-standard-8"
+worker_machine_type      = "n2-standard-8"
+min_cpu_platform         = "Intel Cascade Lake"
+worker_data_disk_size_gb = 250
+
+# Prefer dedicated service accounts with only the roles each component needs.
+gateway_service_account_email = "runable-gateway@my-gcp-project.iam.gserviceaccount.com"
+worker_service_account_email  = "runable-worker@my-gcp-project.iam.gserviceaccount.com"
